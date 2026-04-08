@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual - Versão Corrigida</title>
+<title>Óculos Virtual - Movimento Horizontal Corrigido</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
@@ -75,7 +75,7 @@ faceMesh.onResults(results => {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // === DESENHA VÍDEO EM MODO ESPELHO ===
+  // Desenha o vídeo como espelho real
   ctx.save();
   ctx.scale(-1, 1);
   ctx.drawImage(results.image, -canvas.width, 0, canvas.width, canvas.height);
@@ -83,28 +83,26 @@ faceMesh.onResults(results => {
 
   if (!oculosCarregado || !results.multiFaceLandmarks.length) return;
 
-  // Inverte landmarks para combinar com o vídeo espelhado
-  const landmarks = results.multiFaceLandmarks[0].map(p => ({
-    x: 1 - p.x,
-    y: p.y
-  }));
+  // === NÃO invertemos mais os landmarks (melhor abordagem) ===
+  const landmarks = results.multiFaceLandmarks[0];
 
   const leftEye   = landmarks[33];
   const rightEye  = landmarks[263];
   const noseTip   = landmarks[4];
 
-  const x1 = leftEye.x  * canvas.width;
+  // Coordenadas na tela (já considerando o espelhamento do vídeo)
+  const x1 = (1 - leftEye.x)  * canvas.width;   // invertemos só aqui
   const y1 = leftEye.y  * canvas.height;
-  const x2 = rightEye.x * canvas.width;
+  const x2 = (1 - rightEye.x) * canvas.width;
   const y2 = rightEye.y * canvas.height;
 
   const distance = Math.hypot(x2 - x1, y2 - y1);
 
-  const glassesWidth = distance * 1.9;
+  const glassesWidth = distance * 1.92;
   const glassesHeight = glassesWidth * (glassesImg.height / glassesImg.width);
 
   const centerX = (x1 + x2) / 2;
-  const centerY = (y1 + y2) / 2 + distance * 0.15;   // ajuste fino de altura
+  const centerY = (y1 + y2) / 2 + distance * 0.12;
 
   const angle = Math.atan2(y2 - y1, x2 - x1);
 
@@ -112,20 +110,24 @@ faceMesh.onResults(results => {
   ctx.translate(centerX, centerY);
   ctx.rotate(angle);
 
-  // === GIRO DA CABEÇA ===
-  const yaw = ((noseTip.x * canvas.width) - centerX) / distance;
-  const pitch = ((noseTip.y * canvas.height) - centerY) / distance;
+  // === CÁLCULO DO YAW CORRIGIDO (movimento horizontal) ===
+  // Como o vídeo está espelhado, invertemos o sinal do yaw
+  const noseScreenX = (1 - noseTip.x) * canvas.width;
+  let yaw = (noseScreenX - centerX) / distance;
+  yaw = -yaw;                    // ← ESSA LINHA CORRIGE esquerda/direita
+
+  const pitch = ((noseTip.y * canvas.height) - centerY) / (distance * 1.2);
 
   // Perspectiva
-  ctx.scale(1 - Math.abs(yaw) * 0.3, 1);
-  ctx.scale(1, 1 - Math.abs(pitch) * 0.25);
+  ctx.scale(1 - Math.abs(yaw) * 0.32, 1);
+  ctx.scale(1, 1 - Math.abs(pitch) * 0.27);
 
   // Deslocamento
-  ctx.translate(yaw * 45, pitch * 35);
+  ctx.translate(yaw * 48, pitch * 38);
 
-  // === DESENHO DO ÓCULOS COM CORREÇÃO DE INVERSÃO VERTICAL ===
+  // Desenha o óculos com correção vertical (anti ponta-cabeça)
   ctx.save();
-  ctx.scale(1, -1);                    // ← ESSA LINHA CORRIGE O "PONTA-CABEÇA"
+  ctx.scale(1, -1);               // corrige inversão vertical da imagem
   ctx.drawImage(glassesImg,
     -glassesWidth / 2,
     -glassesHeight / 2,
