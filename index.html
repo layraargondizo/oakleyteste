@@ -58,7 +58,7 @@ const ctx = canvas.getContext("2d");
 const glassesImg = new Image();
 let oculosCarregado = false;
 
-glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/teste_dimensao_oculos2.png";
+glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png";
 
 glassesImg.onload = () => {
   oculosCarregado = true;
@@ -112,7 +112,7 @@ faceMesh.onResults(results => {
 
     const distance = Math.hypot(x2 - x1, y2 - y1);
 
-    const glassesWidth = distance * 1.8;
+    const glassesWidth = distance * 1.9;
     const aspectRatio = glassesImg.height / glassesImg.width;
     const glassesHeight = glassesWidth * aspectRatio;
 
