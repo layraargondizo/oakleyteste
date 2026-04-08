@@ -122,19 +122,33 @@ faceMesh.onResults(results => {
     const angle = Math.atan2(y2 - y1, x2 - x1);
     const offsetY = distance * 0.1;
 
-    ctx.save();
-    ctx.translate(centerX, centerY + offsetY);
-    ctx.rotate(angle);
+ctx.save();
 
-    ctx.drawImage(
-      glassesImg,
-      -glassesWidth / 2,
-      -glassesHeight / 2,
-      glassesWidth,
-      glassesHeight
-    );
+ctx.translate(centerX, centerY + offsetY);
+ctx.rotate(angle);
 
-    ctx.restore();
+// cálculo de giro
+const nose = landmarks[1];
+const noseX = nose.x * canvas.width;
+
+const faceTurn = noseX - centerX;
+const perspective = faceTurn / distance;
+
+// aplicar perspectiva fake
+ctx.scale(1 - Math.abs(perspective) * 0.3, 1);
+
+// leve deslocamento
+ctx.translate(perspective * 50, 0);
+
+ctx.drawImage(
+  glassesImg,
+  -glassesWidth / 2,
+  -glassesHeight / 2,
+  glassesWidth,
+  glassesHeight
+);
+
+ctx.restore();
   }
 });
 
