@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual - Movimento Horizontal Corrigido</title>
+<title>Óculos Virtual - Acompanhamento Vertical Aprimorado</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
@@ -75,7 +75,7 @@ faceMesh.onResults(results => {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Desenha o vídeo como espelho real
+  // Vídeo em modo espelho
   ctx.save();
   ctx.scale(-1, 1);
   ctx.drawImage(results.image, -canvas.width, 0, canvas.width, canvas.height);
@@ -83,51 +83,54 @@ faceMesh.onResults(results => {
 
   if (!oculosCarregado || !results.multiFaceLandmarks.length) return;
 
-  // === NÃO invertemos mais os landmarks (melhor abordagem) ===
   const landmarks = results.multiFaceLandmarks[0];
 
-  const leftEye   = landmarks[33];
-  const rightEye  = landmarks[263];
-  const noseTip   = landmarks[4];
+  // Pontos chave (já convertendo X para espelho)
+  const leftEye   = { x: (1 - landmarks[33].x) * canvas.width,  y: landmarks[33].y * canvas.height };
+  const rightEye  = { x: (1 - landmarks[263].x) * canvas.width, y: landmarks[263].y * canvas.height };
+  const noseTip   = { x: (1 - landmarks[4].x) * canvas.width,   y: landmarks[4].y * canvas.height };
+  const forehead  = { x: (1 - landmarks[10].x) * canvas.width,  y: landmarks[10].y * canvas.height };  // topo da testa
+  const chin      = { x: (1 - landmarks[152].x) * canvas.width, y: landmarks[152].y * canvas.height }; // queixo
 
-  // Coordenadas na tela (já considerando o espelhamento do vídeo)
-  const x1 = (1 - leftEye.x)  * canvas.width;   // invertemos só aqui
-  const y1 = leftEye.y  * canvas.height;
-  const x2 = (1 - rightEye.x) * canvas.width;
-  const y2 = rightEye.y * canvas.height;
+  const distance = Math.hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y);
 
-  const distance = Math.hypot(x2 - x1, y2 - y1);
-
-  const glassesWidth = distance * 1.92;
+  const glassesWidth = distance * 1.93;
   const glassesHeight = glassesWidth * (glassesImg.height / glassesImg.width);
 
-  const centerX = (x1 + x2) / 2;
-  const centerY = (y1 + y2) / 2 + distance * 0.12;
+  const centerX = (leftEye.x + rightEye.x) / 2;
 
-  const angle = Math.atan2(y2 - y1, x2 - x1);
+  // === CÁLCULO MELHORADO DE POSIÇÃO VERTICAL ===
+  const eyeCenterY = (leftEye.y + rightEye.y) / 2;
+
+  // Diferença testa x queixo (quanto maior a diferença negativa = cabeça inclinada para cima)
+  const headTilt = forehead.y - chin.y;
+  const pitchFactor = (headTilt - 0.32) * 4.2;   // ajuste de sensibilidade
+
+  let centerY = eyeCenterY + distance * 0.18;     // posição base dos óculos
+  centerY += pitchFactor * distance * 0.65;       // faz subir bastante quando olha para cima
+
+  const angle = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
 
   ctx.save();
   ctx.translate(centerX, centerY);
   ctx.rotate(angle);
 
-  // === CÁLCULO DO YAW CORRIGIDO (movimento horizontal) ===
-  // Como o vídeo está espelhado, invertemos o sinal do yaw
-  const noseScreenX = (1 - noseTip.x) * canvas.width;
-  let yaw = (noseScreenX - centerX) / distance;
-  yaw = -yaw;                    // ← ESSA LINHA CORRIGE esquerda/direita
+  // Yaw (horizontal) - já estava corrigido
+  let yaw = (noseTip.x - centerX) / distance;
+  yaw = -yaw;
 
-  const pitch = ((noseTip.y * canvas.height) - centerY) / (distance * 1.2);
+  // Pitch (vertical) mais sensível
+  const pitch = (noseTip.y - eyeCenterY) / (distance * 1.1);
 
-  // Perspectiva
-  ctx.scale(1 - Math.abs(yaw) * 0.32, 1);
-  ctx.scale(1, 1 - Math.abs(pitch) * 0.27);
+  // Perspectiva fake (dá sensação de profundidade)
+  ctx.scale(1 - Math.abs(yaw) * 0.33, 1);
+  ctx.scale(1, 1 - Math.abs(pitch) * 0.32);
 
-  // Deslocamento
-  ctx.translate(yaw * 48, pitch * 38);
+  ctx.translate(yaw * 48, pitch * 42);
 
-  // Desenha o óculos com correção vertical (anti ponta-cabeça)
+  // Desenha óculos com correção de inversão vertical
   ctx.save();
-  ctx.scale(1, -1);               // corrige inversão vertical da imagem
+  ctx.scale(1, -1);
   ctx.drawImage(glassesImg,
     -glassesWidth / 2,
     -glassesHeight / 2,
