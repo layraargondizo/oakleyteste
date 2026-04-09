@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual - Câmera</title>
+<title>Óculos Virtual</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
@@ -16,6 +16,7 @@
   video, canvas {
     position: absolute;
     left: 50%;
+    transform: translateX(-50%);
     max-width: 100%;
   }
 
@@ -54,14 +55,24 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-const glassesImg = new Image();
+let glassesImg = new Image();
 let oculosCarregado = false;
 
-glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png";
-
-glassesImg.onload = () => {
-  oculosCarregado = true;
+const modelos = {
+  1: "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png",
+  2: "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png",
+  3: "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png"
 };
+
+function trocarOculos(id) {
+  oculosCarregado = false;
+  glassesImg = new Image();
+  glassesImg.src = modelos[id];
+  glassesImg.onload = () => oculosCarregado = true;
+}
+
+// inicia com modelo 1
+trocarOculos(1);
 
 // câmera
 async function iniciarCamera() {
@@ -69,17 +80,14 @@ async function iniciarCamera() {
   video.srcObject = stream;
 
   return new Promise(resolve => {
-    video.onloadedmetadata = () => {
-      resolve();
-    };
+    video.onloadedmetadata = () => resolve();
   });
 }
 
 // MediaPipe
 const faceMesh = new FaceMesh({
-  locateFile: (file) => {
-    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-  }
+  locateFile: (file) =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
 });
 
 faceMesh.setOptions({
@@ -89,94 +97,89 @@ faceMesh.setOptions({
   minTrackingConfidence: 0.5
 });
 
+// 🔥 AQUI ESTÁ A MÁGICA (100% CORRIGIDO)
 faceMesh.onResults(results => {
 
   if (!canvas.width || !canvas.height) return;
 
-  ctx.save();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // 🔥 ESPELHA TUDO (efeito selfie correto)
+  // 🔥 ESPELHA O VÍDEO (SELFIE)
+  ctx.save();
   ctx.scale(-1, 1);
   ctx.drawImage(results.image, -canvas.width, 0, canvas.width, canvas.height);
+  ctx.restore();
 
-  if (results.multiFaceLandmarks.length > 0 && oculosCarregado) {
-    const landmarks = results.multiFaceLandmarks[0];
+  if (!oculosCarregado) return;
+  if (!results.multiFaceLandmarks.length) return;
 
-    // 🔥 INVERTE X DOS LANDMARKS
-    function invertX(lm) {
-      return {
-        x: (1 - lm.x) * canvas.width,
-        y: lm.y * canvas.height
-      };
-    }
+  const landmarks = results.multiFaceLandmarks[0];
 
-    const leftEye = invertX(landmarks[33]);
-    const rightEye = invertX(landmarks[263]);
-    const nose = invertX(landmarks[1]);
-
-    const x1 = leftEye.x;
-    const y1 = leftEye.y;
-    const x2 = rightEye.x;
-    const y2 = rightEye.y;
-
-    const distance = Math.hypot(x2 - x1, y2 - y1);
-
-    const glassesWidth = distance * 1.9;
-    const aspectRatio = glassesImg.height / glassesImg.width;
-    const glassesHeight = glassesWidth * aspectRatio;
-
-    const centerX = (x1 + x2) / 2;
-    const centerY = (y1 + y2) / 2;
-
-    // 🔥 ÂNGULO CORRIGIDO
-    const angle = Math.atan2(y2 - y1, x2 - x1);
-
-    const offsetY = distance * 0.1;
-
-    ctx.save();
-
-    ctx.translate(centerX, centerY + offsetY);
-    ctx.rotate(angle);
-
-    // 🔥 PERSPECTIVA CORRIGIDA
-    const faceTurn = nose.x - centerX;
-    const perspective = faceTurn / distance;
-
-    ctx.scale(1 - Math.abs(perspective) * 0.3, 1);
-
-    ctx.translate(perspective * 40, 0);
-
-    ctx.drawImage(
-      glassesImg,
-      -glassesWidth / 2,
-      -glassesHeight / 2,
-      glassesWidth,
-      glassesHeight
-    );
-
-    ctx.restore();
+  // 🔥 FUNÇÃO PRA CORRIGIR X
+  function p(lm) {
+    return {
+      x: (1 - lm.x) * canvas.width,
+      y: lm.y * canvas.height
+    };
   }
+
+  const leftEye = p(landmarks[33]);
+  const rightEye = p(landmarks[263]);
+  const nose = p(landmarks[1]);
+
+  const x1 = leftEye.x;
+  const y1 = leftEye.y;
+  const x2 = rightEye.x;
+  const y2 = rightEye.y;
+
+  const distance = Math.hypot(x2 - x1, y2 - y1);
+
+  const glassesWidth = distance * 2.0;
+  const aspectRatio = glassesImg.height / glassesImg.width;
+  const glassesHeight = glassesWidth * aspectRatio;
+
+  const centerX = (x1 + x2) / 2;
+  const centerY = (y1 + y2) / 2;
+
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+
+  const offsetY = distance * 0.12;
+
+  ctx.save();
+
+  ctx.translate(centerX, centerY + offsetY);
+  ctx.rotate(angle);
+
+  // 🔥 PERSPECTIVA
+  const faceTurn = nose.x - centerX;
+  const perspective = faceTurn / distance;
+
+  ctx.scale(1 - Math.abs(perspective) * 0.25, 1);
+  ctx.translate(perspective * 30, 0);
+
+  ctx.drawImage(
+    glassesImg,
+    -glassesWidth / 2,
+    -glassesHeight / 2,
+    glassesWidth,
+    glassesHeight
+  );
 
   ctx.restore();
 });
 
-// loop MAIS ESTÁVEL
+// loop
 async function loop() {
   if (video.readyState >= 2) {
-    try {
-      await faceMesh.send({ image: video });
-    } catch (e) {
-      console.log("erro mediapipe:", e);
-    }
+    await faceMesh.send({ image: video });
   }
   requestAnimationFrame(loop);
 }
 
-// 🔥 INICIALIZAÇÃO CORRETA
+// init
 (async () => {
   await iniciarCamera();
 
-  // garante dimensão correta
   canvas.width = video.videoWidth || 640;
   canvas.height = video.videoHeight || 480;
 
