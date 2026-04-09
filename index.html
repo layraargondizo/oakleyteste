@@ -2,118 +2,180 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual - Espelho Perfeito</title>
+<title>Óculos Virtual - Câmera</title>
+
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+
 <style>
-  body { margin: 0; overflow: hidden; background: #000; }
-  
-  /* Mantendo seu espelho CSS */
-  video, canvas {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%) scaleX(-1);
-    max-width: 100%;
-  }
-  /* ... restante do seu CSS dos botões ... */
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #000;
+  }
+
+  video, canvas {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 100%;
+  }
+
+  .botoes {
+    position: fixed;
+    bottom: 20px;
+    width: 100%;
+    text-align: center;
+    z-index: 10;
+  }
+
+  button {
+    padding: 10px 15px;
+    margin: 5px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+  }
 </style>
 </head>
+
 <body>
-<video id="video" autoplay playsinline style="display:none;"></video>
+
+<video id="video" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
+
+<div class="botoes">
+  <button onclick="trocarOculos(1)">Óculos 1</button>
+  <button onclick="trocarOculos(2)">Óculos 2</button>
+  <button onclick="trocarOculos(3)">Óculos 3</button>
+</div>
+
 <script>
+
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+
 const glassesImg = new Image();
 let oculosCarregado = false;
-glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png";
-glassesImg.onload = () => { oculosCarregado = true; };
 
-// Câmera e MediaPipe (mantendo sua estrutura)
+glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png";
+
+glassesImg.onload = () => {
+  oculosCarregado = true;
+};
+
+// câmera
 async function iniciarCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  video.srcObject = stream;
-  return new Promise(resolve => { video.onloadedmetadata = () => { resolve(); }; });
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream;
+
+  return new Promise(resolve => {
+    video.onloadedmetadata = () => {
+      resolve();
+    };
+  });
 }
-const faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
-faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+
+// MediaPipe
+const faceMesh = new FaceMesh({
+  locateFile: (file) => {
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+  }
+});
+
+faceMesh.setOptions({
+  maxNumFaces: 1,
+  refineLandmarks: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
 
 faceMesh.onResults(results => {
-  if (!canvas.width || !canvas.height) return;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-  if (!oculosCarregado) return;
-  if (results.multiFaceLandmarks.length > 0) {
-    const landmarks = results.multiFaceLandmarks[0];
-    const leftEye = landmarks[33];
-    const rightEye = landmarks[263];
-    const x1 = leftEye.x * canvas.width;
-    const y1 = leftEye.y * canvas.height;
-    const x2 = rightEye.x * canvas.width;
-    const y2 = rightEye.y * canvas.height;
-    const distance = Math.hypot(x2 - x1, y2 - y1);
-    const glassesWidth = distance * 2.1;
-    const aspectRatio = glassesImg.height / glassesImg.width;
-    const glassesHeight = glassesWidth * aspectRatio;
-    const centerX = (x1 + x2) / 2;
-    const centerY = (y1 + y2) / 2;
-    
-    // CORREÇÃO 1: OFFSET VERTICAL DINÂMICO (para olhar cima/baixo)
-    // Usamos a diferença entre os olhos e o nariz para saber a inclinação
-    const noseTip = landmarks[1];
-    const upperNose = landmarks[6]; // Ponto estável entre os olhos
-    const verticalDiff = (noseTip.y - upperNose.y) * canvas.height;
-    
-    // O óculos deve descendo um pouco (base * 1.3) e acompanhar o movimento do nariz
-    const dy = (distance * 1.3) + verticalDiff;
+  if (!canvas.width || !canvas.height) return;
 
-    const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+  if (!oculosCarregado) return;
+
+  if (results.multiFaceLandmarks.length > 0) {
+    const landmarks = results.multiFaceLandmarks[0];
+
+    const leftEye = landmarks[33];
+    const rightEye = landmarks[263];
+
+    const x1 = leftEye.x * canvas.width;
+    const y1 = leftEye.y * canvas.height;
+    const x2 = rightEye.x * canvas.width;
+    const y2 = rightEye.y * canvas.height;
+
+    const distance = Math.hypot(x2 - x1, y2 - y1);
+
+    const glassesWidth = distance * 1.9;
+    const aspectRatio = glassesImg.height / glassesImg.width;
+    const glassesHeight = glassesWidth * aspectRatio;
+
+    const centerX = (x1 + x2) / 2;
+    const centerY = (y1 + y2) / 2;
+
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const offsetY = distance * 0.1;
 
 ctx.save();
-ctx.translate(centerX, centerY + dy);
 
-// CORREÇÃO 2: ROTAÇÃO INVERTIDA (para o espelho)
-// O sinal negativo compensa a inversão do scaleX(-1) do CSS
-ctx.rotate(-angle); 
+ctx.translate(centerX, centerY + offsetY);
+ctx.rotate(angle);
 
+// cálculo de giro
 const nose = landmarks[1];
 const noseX = nose.x * canvas.width;
 
-// CORREÇÃO 3: GIRO LATERAL (YAW) INVERTIDO (para o espelho)
-// Trocamos noseX - centerX por centerX - noseX
-const faceTurn = centerX - noseX; 
+const faceTurn = noseX - centerX;
 const perspective = faceTurn / distance;
 
-ctx.scale(1 - Math.abs(perspective) * 0.35, 1);
+// aplicar perspectiva fake
+ctx.scale(1 - Math.abs(perspective) * 0.3, 1);
 
-// O deslocamento lateral também deve ser invertido
-ctx.translate(-perspective * 40, 0); 
+// leve deslocamento
+ctx.translate(perspective * 50, 0);
 
 ctx.drawImage(
-  glassesImg,
-  -glassesWidth / 2,
-  -glassesHeight / 2,
-  glassesWidth,
-  glassesHeight
+  glassesImg,
+  -glassesWidth / 2,
+  -glassesHeight / 2,
+  glassesWidth,
+  glassesHeight
 );
+
 ctx.restore();
-  }
+  }
 });
 
-// Loop e Inicialização (mantendo sua estrutura)
+// loop MAIS ESTÁVEL
 async function loop() {
-  if (video.readyState >= 2) {
-    try { await faceMesh.send({ image: video }); } catch (e) { console.log("erro mediapipe:", e); }
-  }
-  requestAnimationFrame(loop);
+  if (video.readyState >= 2) {
+    try {
+      await faceMesh.send({ image: video });
+    } catch (e) {
+      console.log("erro mediapipe:", e);
+    }
+  }
+  requestAnimationFrame(loop);
 }
+
+// 🔥 INICIALIZAÇÃO CORRETA
 (async () => {
-  await iniciarCamera();
-  canvas.width = video.videoWidth || 640;
-  canvas.height = video.videoHeight || 480;
-  loop();
+  await iniciarCamera();
+
+  // garante dimensão correta
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+
+  loop();
 })();
+
 </script>
+
 </body>
 </html>
