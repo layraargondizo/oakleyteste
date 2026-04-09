@@ -2,52 +2,28 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual</title>
+<title>Teste Óculos</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
 <style>
-  body {
-    margin: 0;
-    overflow: hidden;
-    background: #000;
-  }
-
-  video, canvas {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    max-width: 100%;
-  }
-
-  .botoes {
-    position: fixed;
-    bottom: 20px;
-    width: 100%;
-    text-align: center;
-    z-index: 10;
-  }
-
-  button {
-    padding: 10px 15px;
-    margin: 5px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-  }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: black;
+}
+canvas {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
 </style>
 </head>
 
 <body>
 
-<video id="video" autoplay playsinline></video>
+<video id="video" autoplay playsinline style="display:none;"></video>
 <canvas id="canvas"></canvas>
-
-<div class="botoes">
-  <button onclick="trocarOculos(1)">Óculos 1</button>
-  <button onclick="trocarOculos(2)">Óculos 2</button>
-  <button onclick="trocarOculos(3)">Óculos 3</button>
-</div>
 
 <script>
 
@@ -55,27 +31,12 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-let glassesImg = new Image();
-let oculosCarregado = false;
-
-const modelos = {
-  1: "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png",
-  2: "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png",
-  3: "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png"
-};
-
-function trocarOculos(id) {
-  oculosCarregado = false;
-  glassesImg = new Image();
-  glassesImg.src = modelos[id];
-  glassesImg.onload = () => oculosCarregado = true;
-}
-
-// inicia com modelo 1
-trocarOculos(1);
+// 🔥 IMAGEM DO ÓCULOS (FIXA)
+const glasses = new Image();
+glasses.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png";
 
 // câmera
-async function iniciarCamera() {
+async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({ video: true });
   video.srcObject = stream;
 
@@ -84,7 +45,7 @@ async function iniciarCamera() {
   });
 }
 
-// MediaPipe
+// mediapipe
 const faceMesh = new FaceMesh({
   locateFile: (file) =>
     `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
@@ -97,73 +58,54 @@ faceMesh.setOptions({
   minTrackingConfidence: 0.5
 });
 
-// 🔥 AQUI ESTÁ A MÁGICA (100% CORRIGIDO)
 faceMesh.onResults(results => {
 
-  if (!canvas.width || !canvas.height) return;
+  if (!canvas.width) return;
 
+  // limpa
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // 🔥 ESPELHA O VÍDEO (SELFIE)
+  // 🔥 ESPELHA VÍDEO
   ctx.save();
   ctx.scale(-1, 1);
   ctx.drawImage(results.image, -canvas.width, 0, canvas.width, canvas.height);
   ctx.restore();
 
-  if (!oculosCarregado) return;
   if (!results.multiFaceLandmarks.length) return;
 
-  const landmarks = results.multiFaceLandmarks[0];
+  const lm = results.multiFaceLandmarks[0];
 
-  // 🔥 FUNÇÃO PRA CORRIGIR X
-  function p(lm) {
-    return {
-      x: (1 - lm.x) * canvas.width,
-      y: lm.y * canvas.height
-    };
-  }
+  // olhos
+  const left = lm[33];
+  const right = lm[263];
 
-  const leftEye = p(landmarks[33]);
-  const rightEye = p(landmarks[263]);
-  const nose = p(landmarks[1]);
+  // 🔥 CONVERTE + ESPELHA X
+  const x1 = (1 - left.x) * canvas.width;
+  const y1 = left.y * canvas.height;
 
-  const x1 = leftEye.x;
-  const y1 = leftEye.y;
-  const x2 = rightEye.x;
-  const y2 = rightEye.y;
+  const x2 = (1 - right.x) * canvas.width;
+  const y2 = right.y * canvas.height;
 
-  const distance = Math.hypot(x2 - x1, y2 - y1);
+  // centro
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
 
-  const glassesWidth = distance * 2.0;
-  const aspectRatio = glassesImg.height / glassesImg.width;
-  const glassesHeight = glassesWidth * aspectRatio;
+  // distância
+  const dist = Math.hypot(x2 - x1, y2 - y1);
 
-  const centerX = (x1 + x2) / 2;
-  const centerY = (y1 + y2) / 2;
+  // tamanho simples
+  const w = dist * 2.0;
+  const h = w * (glasses.height / glasses.width);
 
+  // rotação
   const angle = Math.atan2(y2 - y1, x2 - x1);
-
-  const offsetY = distance * 0.12;
 
   ctx.save();
 
-  ctx.translate(centerX, centerY + offsetY);
+  ctx.translate(cx, cy);
   ctx.rotate(angle);
 
-  // 🔥 PERSPECTIVA
-  const faceTurn = nose.x - centerX;
-  const perspective = faceTurn / distance;
-
-  ctx.scale(1 - Math.abs(perspective) * 0.25, 1);
-  ctx.translate(perspective * 30, 0);
-
-  ctx.drawImage(
-    glassesImg,
-    -glassesWidth / 2,
-    -glassesHeight / 2,
-    glassesWidth,
-    glassesHeight
-  );
+  ctx.drawImage(glasses, -w/2, -h/2, w, h);
 
   ctx.restore();
 });
@@ -178,10 +120,10 @@ async function loop() {
 
 // init
 (async () => {
-  await iniciarCamera();
+  await startCamera();
 
-  canvas.width = video.videoWidth || 640;
-  canvas.height = video.videoHeight || 480;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
 
   loop();
 })();
