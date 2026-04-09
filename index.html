@@ -2,28 +2,29 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual - Espelho Perfeito</title>
+<title>Óculos Virtual - Sem Congelar</title>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <style>
   body { margin: 0; overflow: hidden; background: #000; }
   video, canvas {
     position: absolute;
     left: 50%;
-    /* MODO ESPELHO ATIVADO */
     transform: translateX(-50%) scaleX(-1);
     max-width: 100%;
+    height: auto;
   }
   .botoes { position: fixed; bottom: 20px; width: 100%; text-align: center; z-index: 10; }
-  button { padding: 10px 15px; margin: 5px; border-radius: 8px; border: none; cursor: pointer; }
+  button { padding: 12px; margin: 5px; border-radius: 8px; cursor: pointer; }
 </style>
 </head>
 <body>
 
-<video id="video" autoplay playsinline style="display:none;"></video>
+<!-- Video visível mas com opacidade 0 evita alguns bugs de renderização em navegadores mobile -->
+<video id="video" autoplay playsinline style="opacity: 0; pointer-events: none;"></video>
 <canvas id="canvas"></canvas>
 
 <div class="botoes">
-  <button onclick="glassesImg.src='https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png'">Óculos 1</button>
+  <button onclick="glassesImg.src='https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png'">Resetar Óculos</button>
 </div>
 
 <script>
@@ -37,12 +38,13 @@ glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.pn
 glassesImg.onload = () => { oculosCarregado = true; };
 
 async function iniciarCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  const stream = await navigator.mediaDevices.getUserMedia({ 
+    video: { width: { ideal: 640 }, height: { ideal: 480 } } 
+  });
   video.srcObject = stream;
   return new Promise(resolve => {
     video.onloadedmetadata = () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      video.play();
       resolve();
     };
   });
@@ -60,70 +62,64 @@ faceMesh.setOptions({
 });
 
 faceMesh.onResults(results => {
-  if (!canvas.width || !canvas.height) return;
+  // Ajusta o tamanho do canvas dinamicamente para evitar distorção
+  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  }
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-  if (oculosCarregado && results.multiFaceLandmarks.length > 0) {
+  if (oculosCarregado && results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
     const landmarks = results.multiFaceLandmarks[0];
 
-    const leftEye = landmarks[33];
-    const rightEye = landmarks[263];
-
-    const x1 = leftEye.x * canvas.width;
-    const y1 = leftEye.y * canvas.height;
-    const x2 = rightEye.x * canvas.width;
-    const y2 = rightEye.y * canvas.height;
+    const x1 = landmarks[33].x * canvas.width;
+    const y1 = landmarks[33].y * canvas.height;
+    const x2 = landmarks[263].x * canvas.width;
+    const y2 = landmarks[263].y * canvas.height;
 
     const distance = Math.hypot(x2 - x1, y2 - y1);
-    const glassesWidth = distance * 1.9;
-    const aspectRatio = glassesImg.height / glassesImg.width;
-    const glassesHeight = glassesWidth * aspectRatio;
-
     const centerX = (x1 + x2) / 2;
     const centerY = (y1 + y2) / 2;
-
-    // 1. AJUSTE: Invertemos o sinal do ângulo para o espelho
+    
+    // Sincronizado com o seu código "perfeito" + correções de espelho
     const angle = Math.atan2(y2 - y1, x2 - x1);
-    const offsetY = distance * 0.15; // Aumentei levemente para descer o óculos
+    const offsetY = distance * 0.15; // Ajuste para descer o óculos
 
     ctx.save();
     ctx.translate(centerX, centerY + offsetY);
-    ctx.rotate(-angle); // NEGATIVO para o espelho
+    ctx.rotate(-angle); 
 
-    const nose = landmarks[1];
-    const noseX = nose.x * canvas.width;
-
-    // 2. AJUSTE: Invertemos a lógica do giro
+    const noseX = landmarks[1].x * canvas.width;
     const faceTurn = centerX - noseX; 
     const perspective = faceTurn / distance;
 
     ctx.scale(1 - Math.abs(perspective) * 0.3, 1);
-
-    // 3. AJUSTE: O deslocamento também deve ser invertido
     ctx.translate(-perspective * 50, 0); 
 
-    ctx.drawImage(
-      glassesImg,
-      -glassesWidth / 2,
-      -glassesHeight / 2,
-      glassesWidth,
-      glassesHeight
-    );
+    const gWidth = distance * 1.9;
+    const gHeight = gWidth * (glassesImg.height / glassesImg.width);
 
+    ctx.drawImage(glassesImg, -gWidth / 2, -gHeight / 2, gWidth, gHeight);
     ctx.restore();
   }
 });
 
 async function loop() {
-  if (video.readyState >= 2) {
+  // SÓ envia para o MediaPipe se o vídeo estiver realmente rodando
+  if (video.readyState >= 2 && video.videoWidth > 0) {
     await faceMesh.send({ image: video });
   }
   requestAnimationFrame(loop);
 }
 
-iniciarCamera().then(() => loop());
+// Inicialização com tratamento de erro
+iniciarCamera().then(() => {
+  console.log("Câmera OK, iniciando loop...");
+  loop();
+}).catch(err => console.error("Falha na câmera:", err));
+
 </script>
 </body>
 </html>
