@@ -2,28 +2,27 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual - Espelho Perfeito</title>
+<title>Óculos Virtual - Correção de Eixos</title>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <style>
   body { margin: 0; overflow: hidden; background: #000; }
   video, canvas {
     position: absolute;
     left: 50%;
-    /* Mantendo seu espelho CSS */
+    /* Mantendo o espelho CSS que você quer */
     transform: translateX(-50%) scaleX(-1);
     max-width: 100%;
     height: auto;
   }
   .botoes { position: fixed; bottom: 20px; width: 100%; text-align: center; z-index: 10; }
-  button { padding: 12px 20px; margin: 5px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; background: #fff; color: #333; }
+  button { padding: 10px 15px; margin: 5px; border-radius: 8px; cursor: pointer; font-weight: bold; background: #fff; color: #333; }
 </style>
 </head>
 <body>
 <video id="video" autoplay playsinline style="opacity: 0;"></video>
 <canvas id="canvas"></canvas>
 <div class="botoes">
-  <button onclick="trocarOculos(1)">Óculos 1</button>
-  <button onclick="trocarOculos(2)">Óculos 2</button>
+  <button onclick="glassesImg.src='https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png'">Óculos 1</button>
 </div>
 <script>
 const video = document.getElementById("video");
@@ -31,13 +30,13 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 const glassesImg = new Image();
-let oculosCarregado = false;
 glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png";
-glassesImg.onload = () => { oculosCarregado = true; };
 
 async function iniciarCamera() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } });
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { width: { ideal: 640 }, height: { ideal: 480 } } 
+    });
     video.srcObject = stream;
     return new Promise(resolve => {
       video.onloadedmetadata = () => { video.play(); resolve(); };
@@ -57,46 +56,48 @@ faceMesh.onResults(results => {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-  if (oculosCarregado && results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+  if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
     const landmarks = results.multiFaceLandmarks[0];
 
-    // PONTOS CHAVE (Pontos oficiais MediaPipe)
-    const olhoEsquerdoRaw = landmarks[33];   // Canto externo olho esquerdo
-    const olhoDireitoRaw = landmarks[263]; // Canto externo olho direito
-    const bridgeNose = landmarks[6];    // Ponto exato entre os olhos (Glabela)
-    const noseTip = landmarks[1];       // Ponta do nariz
+    // PONTOS CHAVE (Oficiais MediaPipe)
+    const olhoEsquerdo = landmarks[33];   // Canto externo esquerdo
+    const olhoDireito = landmarks[263];  // Canto externo direito
+    const pontaNariz = landmarks[1];      // Ponta do nariz
+    const glabela = landmarks[168];      // Ponto entre os olhos (Bridge)
 
-    const x1Raw = olhoEsquerdoRaw.x * canvas.width;
-    const y1Raw = olhoEsquerdoRaw.y * canvas.height;
-    const x2Raw = olhoDireitoRaw.x * canvas.width;
-    const y2Raw = olhoDireitoRaw.y * canvas.height;
+    const x1 = olhoEsquerdo.x * canvas.width;
+    const y1 = olhoEsquerdo.y * canvas.height;
+    const x2 = olhoDireito.x * canvas.width;
+    const y2 = olhoDireito.y * canvas.height;
 
-    // --- CORREÇÃO 1: ENCAIXE VERTICAL (Descer da testa) ---
-    // Usamos a ponte do nariz como âncora vertical, pois é mais estável.
-    const centerX = (x1Raw + x2Raw) / 2;
-    const centerY = bridgeNose.y * canvas.height;
-    const distance = Math.hypot(x2Raw - x1Raw, y2Raw - y1Raw);
-    const angle = Math.atan2(y2Raw - y1Raw, x2Raw - x1Raw);
+    const centerX = (x1 + x2) / 2;
+    // Posição vertical inicial baseada nos olhos
+    const centerYEyes = (y1 + y2) / 2;
+    
+    const distance = Math.hypot(x2 - x1, y2 - y1);
+    const angle = Math.atan2(y2 - y1, x2 - x1);
 
     ctx.save();
     
-    // Posicionamento centralizado na ponte do nariz. Sem offset manual aqui.
-    ctx.translate(centerX, centerY);
-    ctx.rotate(angle);
+    // Posicionamento centralizado na linha dos olhos
+    ctx.translate(centerX, centerYEyes);
+    // Invertemos o ângulo para não ficar torto no espelho
+    ctx.rotate(-angle); 
 
-    // --- CORREÇÃO 2: GIRO LATERAL (YAW) E PROFUNDIDADE ---
-    const noseX = noseTip.x * canvas.width;
-    // Cálculo do giro em relação ao centro do rosto (usando X bruto)
-    const faceTurn = (noseX) - (centerX);
+    // --- CORREÇÃO DE INCLINAÇÃO VERTICAL (PITCH) ---
+    // Calculamos a distância vertical entre o nariz e o ponto entre os olhos
+    const verticalDist = (pontaNariz.y - glabela.y) * canvas.height;
+    // INVERTEMOS O SINAL: Ao olhar para cima, o óculos deve SUBIR.
+    // O ajuste fino '- (distance * 0.1)' desce o óculos um pouco, cobrindo melhor os olhos.
+    const pitchOffset = (verticalDist * -1) - (distance * 0.1); 
+    ctx.translate(0, pitchOffset);
+
+    // --- CORREÇÃO DE GIRO LATERAL (YAW) ---
+    const noseX = pontaNariz.x * canvas.width;
+    // INVERTEMOS O CÁLCULO: (nariz - centro). Ao virar para a direita (do espelho), o óculos diminui no lado correto.
+    const faceTurn = (noseX - centerX);
     // Perspectiva simulada: quanto maior o giro, maior o achatamento lateral
     const perspectiveYaw = faceTurn / distance;
-
-    // --- CORREÇÃO 3: INCLINAÇÃO (PITCH) CIMA/BAIXO ---
-    // Invertemos o cálculo para que ao olhar para cima, o óculos suba.
-    const verticalDist = (bridgeNose.y * canvas.height) - (noseTip.y * canvas.height);
-    // Ajuste fino do ponto de encaixe vertical. Aumente este número para descer o óculos.
-    const pitchOffset = (verticalDist * -1) - (distance * 0.15); 
-    ctx.translate(0, pitchOffset);
 
     const glassesWidth = distance * 2.1;
     const aspectRatio = glassesImg.height / glassesImg.width;
@@ -105,7 +106,7 @@ faceMesh.onResults(results => {
     // Perspectiva fake: achata o óculos ao virar o rosto (yaw)
     ctx.scale(1 - Math.abs(perspectiveYaw) * 0.35, 1);
     
-    // --- COMPENSAÇÃO DO ESPELHO (IMPORTANTE) ---
+    // --- COMPENSAÇÃO DO ESPELHO ---
     // O deslocamento lateral agora é invertido para combater a inversão do CSS.
     // Isso faz com que o lado "para trás" encurte e o óculos se mova para lá, na direção correta.
     ctx.translate(perspectiveYaw * -20, 0); 
@@ -128,11 +129,6 @@ async function loop() {
 }
 
 (async () => { await iniciarCamera(); loop(); })();
-
-function trocarOculos(modelo) {
-  const base_url = "https://images.tcdn.com.br/img/editor/up/1360466/";
-  if (modelo === 1) glassesImg.src = base_url + "com_sombra.png";
-}
 </script>
 </body>
 </html>
