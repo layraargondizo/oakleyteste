@@ -2,45 +2,70 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual - Estável</title>
+<title>Óculos Virtual - Estável e Suave</title>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <style>
-  body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }
+  body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; }
   
-  /* Container para manter a proporção */
-  .container { position: relative; width: 100%; max-width: 800px; }
+  .container { position: relative; width: 100%; max-width: 800px; overflow: hidden; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
 
-  /* Espelhamento aplicado aqui */
   canvas {
     width: 100%;
     height: auto;
-    transform: scaleX(-1); /* Efeito espelho */
+    /* Efeito espelho essencial para provador */
+    transform: scaleX(-1); 
     display: block;
   }
 
-  .botoes {
-    position: absolute;
-    bottom: 20px;
-    width: 100%;
-    text-align: center;
-  }
-  button { padding: 12px; cursor: pointer; border-radius: 5px; border: none; font-weight: bold; }
+  .botoes { position: absolute; bottom: 20px; width: 100%; text-align: center; z-index: 10; }
+  button { padding: 12px 20px; cursor: pointer; border-radius: 30px; border: none; font-weight: bold; background: rgba(255,255,255,0.8); color: #333; backdrop-filter: blur(5px); transition: all 0.2s; margin: 0 5px; }
+  button:hover { background: white; transform: scale(1.05); }
 </style>
 </head>
 <body>
 
 <div class="container">
-  <video id="input_video" style="display:none"></video>
+  <video id="input_video" style="display:none" playsinline></video>
   <canvas id="output_canvas"></canvas>
   
   <div class="botoes">
-    <button onclick="mudarOculos('https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png')">Modelo 1</button>
+    <button onclick="mudarOculos('https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png')">Modelo Normal</button>
+    <button onclick="mudarOculos('https://i.imgur.com/G4Yx1W2.png')">Modelo Escuro</button>
   </div>
 </div>
 
 <script>
+/**
+ * CLASSE DE SUAVIDADE (Filtro EMA)
+ * Salva o valor anterior e calcula uma média ponderada com o novo.
+ */
+class SmoothValue {
+  constructor(smoothess = 0.8) {
+    this.value = null;
+    this.smoothess = smoothess; // Quanto maior, mais lento/suave (0.0 a 0.99)
+  }
+
+  update(newValue) {
+    if (this.value === null) {
+      this.value = newValue; // Primeira vez, aceita o valor bruto
+    } else {
+      // Média móvel exponencial
+      this.value = (this.value * this.smoothess) + (newValue * (1 - this.smoothess));
+    }
+    return this.value;
+  }
+}
+
+// Inicializa suavizadores para cada parâmetro que treme
+const smootherCenterX = new SmoothValue(0.85); // Posição X
+const smootherCenterY = new SmoothValue(0.85); // Posição Y
+const smootherDistance = new SmoothValue(0.9);  // Tamanho
+const smootherAngle = new SmoothValue(0.9);     // Rotação Z
+const smootherPitch = new SmoothValue(0.8);     // Olhar Cima/Baixo
+const smootherYaw = new SmoothValue(0.8);       // Olhar Lados
+
 const videoElement = document.getElementById('input_video');
 const canvasElement = document.getElementById('output_canvas');
 const canvasCtx = canvasElement.getContext('2d');
@@ -49,55 +74,71 @@ const glassesImg = new Image();
 glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png";
 
 function onResults(results) {
-  // 1. Ajusta o tamanho do canvas ao vídeo (apenas uma vez ou quando mudar)
+  // Ajuste do canvas
   if (canvasElement.width !== results.image.width) {
     canvasElement.width = results.image.width;
     canvasElement.height = results.image.height;
   }
 
-  // 2. Limpa e desenha o frame da câmera (O FUNDO)
   canvasCtx.save();
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+  
+  // Desenha vídeo de fundo
   canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-  // 3. Desenha o óculos (O OVERLAY)
   if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
     const landmarks = results.multiFaceLandmarks[0];
     
-    // Pontos chave
+    // 1. Coleta dados brutos (Raw)
     const leftEye = landmarks[33];
     const rightEye = landmarks[263];
     const noseTip = landmarks[1];
     const midEyes = landmarks[168];
 
-    const x1 = leftEye.x * canvasElement.width;
-    const y1 = leftEye.y * canvasElement.height;
-    const x2 = rightEye.x * canvasElement.width;
-    const y2 = rightEye.y * canvasElement.height;
+    const rawX1 = leftEye.x * canvasElement.width;
+    const rawY1 = leftEye.y * canvasElement.height;
+    const rawX2 = rightEye.x * canvasElement.width;
+    const rawY2 = rightEye.y * canvasElement.height;
 
-    const centerX = (x1 + x2) / 2;
-    const centerY = (y1 + y2) / 2;
-    const distance = Math.hypot(x2 - x1, y2 - y1);
+    // 2. Aplica suavização nos dados brutos
+    const centerX = smootherCenterX.update((rawX1 + rawX2) / 2);
+    const centerY = smootherCenterY.update((rawY1 + rawY2) / 2);
+    const distance = smootherDistance.update(Math.hypot(rawX2 - rawX1, rawY2 - rawY1));
+    const rawAngle = Math.atan2(rawY2 - rawY1, rawX2 - rawX1);
+    const angle = smootherAngle.update(rawAngle);
 
-    // Cálculos de rotação e inclinação
-    const angle = Math.atan2(y2 - y1, x2 - x1);
-    const verticalDiff = (noseTip.y - midEyes.y) * canvasElement.height;
-    const pitchFactor = verticalDiff / (distance * 0.5);
+    // 3. Cálculos de Rotação 3D suavizados
+    
+    // PITCH (Cima/Baixo)
+    const rawVerticalDiff = (noseTip.y - midEyes.y) * canvasElement.height;
+    const rawPitchFactor = rawVerticalDiff / (distance * 0.5);
+    const pitchFactor = smootherPitch.update(rawPitchFactor);
 
+    // YAW (Lados - ONDE ESTAVA O ERRO DE INVERSÃO)
+    const rawNoseX = noseTip.x * canvasElement.width;
+    const noseRelativeX = rawNoseX - ((rawX1 + rawX2) / 2); // Usa X bruto para detectar curva
+    const rawFaceTurn = noseRelativeX / distance;
+    
+    // --- CORREÇÃO AQUI ---
+    // Multiplicamos por -1 para inverter a simulação de virada lateral
+    const faceTurnBrutoInvertido = rawFaceTurn * -1; 
+    // Suaviza o valor já corrigido
+    const faceTurn = smootherYaw.update(faceTurnBrutoInvertido);
+
+    // 4. Desenho
     const glassesWidth = distance * 2.1;
     const glassesHeight = glassesWidth * (glassesImg.height / glassesImg.width);
 
     canvasCtx.translate(centerX, centerY);
     canvasCtx.rotate(angle);
 
-    // Ajuste de altura vertical (segue o rosto ao olhar para cima/baixo)
+    // Ajuste vertical ao olhar cima/baixo
     const pitchOffset = (pitchFactor - 0.75) * (distance * 0.4);
     canvasCtx.translate(0, pitchOffset);
 
-    // Efeito de perspectiva ao virar o rosto (Yaw)
-    const noseX = noseTip.x * canvasElement.width;
-    const faceTurn = (noseX - centerX) / distance;
+    // Perspectiva lateral (Yaw) suavizada e na direção correta
     canvasCtx.scale(1 - Math.abs(faceTurn) * 0.25, 1);
+    canvasCtx.translate(faceTurn * (distance * 0.1), 0); // Pequeno deslocamento lateral
 
     canvasCtx.drawImage(
       glassesImg,
@@ -110,7 +151,6 @@ function onResults(results) {
   canvasCtx.restore();
 }
 
-// Configuração do MediaPipe FaceMesh
 const faceMesh = new FaceMesh({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
 });
@@ -118,13 +158,12 @@ const faceMesh = new FaceMesh({
 faceMesh.setOptions({
   maxNumFaces: 1,
   refineLandmarks: true,
-  minDetectionConfidence: 0.5,
-  minTrackingConfidence: 0.5
+  minDetectionConfidence: 0.6, // Aumentado levemente para ajudar estabilidade
+  minTrackingConfidence: 0.6
 });
 
 faceMesh.onResults(onResults);
 
-// Gerenciador de câmera mais estável
 const camera = new Camera(videoElement, {
   onFrame: async () => {
     await faceMesh.send({image: videoElement});
