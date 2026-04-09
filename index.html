@@ -59,67 +59,49 @@ faceMesh.setOptions({
 });
 
 faceMesh.onResults(results => {
+
   if (!canvas.width || !canvas.height) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // === ESPELHAMENTO DO VÍDEO (camada por cima do vídeo) ===
+  // 🔥 ESPELHA VÍDEO
   ctx.save();
-  ctx.scale(-1, 1);  // inverte horizontalmente
+  ctx.scale(-1, 1);
   ctx.drawImage(results.image, -canvas.width, 0, canvas.width, canvas.height);
   ctx.restore();
 
-  if (!oculosCarregado || !results.multiFaceLandmarks.length) return;
+  if (!oculosCarregado) return;
+  if (!results.multiFaceLandmarks.length) return;
 
-  const landmarks = results.multiFaceLandmarks[0];
+  const lm = results.multiFaceLandmarks[0];
 
-  // === Cálculo das posições com correção de espelho ===
-  const leftEye  = landmarks[33];
-  const rightEye = landmarks[263];
-  const nose     = landmarks[1];   // ou landmarks[4] para ponta do nariz
+  const left = lm[33];
+  const right = lm[263];
 
-  const x1 = (1 - leftEye.x)  * canvas.width;
-  const y1 = leftEye.y * canvas.height;
-  const x2 = (1 - rightEye.x) * canvas.width;
-  const y2 = rightEye.y * canvas.height;
+  const x1 = (1 - left.x) * canvas.width;
+  const y1 = left.y * canvas.height;
 
-  const distance = Math.hypot(x2 - x1, y2 - y1);
+  const x2 = (1 - right.x) * canvas.width;
+  const y2 = right.y * canvas.height;
 
-  const glassesWidth = distance * 1.9;
-  const glassesHeight = glassesWidth * (glassesImg.height / glassesImg.width);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
 
-  const centerX = (x1 + x2) / 2;
-  const centerY = (y1 + y2) / 2 + distance * 0.1;
+  const dist = Math.hypot(x2 - x1, y2 - y1);
+
+  const w = dist * 2.0;
+  const h = w * (glassesImg.height / glassesImg.width);
 
   const angle = Math.atan2(y2 - y1, x2 - x1);
 
   ctx.save();
 
-ctx.translate(cx, cy);
+  ctx.translate(cx, cy);
 
-// 🔥 CORREÇÃO REAL
-ctx.rotate(angle + Math.PI);
+  // 🔥 AQUI É A CORREÇÃO DO ÓCULOS VIRADO
+  ctx.rotate(angle + Math.PI);
 
-ctx.drawImage(glasses, -w/2, -h/2, w, h);
-
-ctx.restore();
-
-  // Cálculo de giro (yaw) com correção de espelho
-  const noseX = (1 - nose.x) * canvas.width;
-  let faceTurn = noseX - centerX;
-  faceTurn = -faceTurn;                    // ← importante para movimento correto
-  const perspective = faceTurn / distance;
-
-  ctx.scale(1 - Math.abs(perspective) * 0.3, 1);
-  ctx.translate(perspective * 50, 0);
-
-  ctx.drawImage(
-    glassesImg,
-    -glassesWidth / 2,
-    -glassesHeight / 2,
-    glassesWidth,
-    glassesHeight
-  );
+  ctx.drawImage(glassesImg, -w/2, -h/2, w, h);
 
   ctx.restore();
 });
