@@ -77,47 +77,41 @@ faceMesh.onResults(results => {
 
   const left = lm[33];
   const right = lm[263];
-  const nose = lm[1];
 
-  // 🔥 posições corrigidas (espelho)
   const x1 = (1 - left.x) * canvas.width;
   const y1 = left.y * canvas.height;
 
   const x2 = (1 - right.x) * canvas.width;
   const y2 = right.y * canvas.height;
 
-  const noseX = (1 - nose.x) * canvas.width;
-  const noseY = nose.y * canvas.height;
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
 
-  // 🔥 distância base
   const dist = Math.hypot(x2 - x1, y2 - y1);
 
-  // 🔥 TAMANHO
   const w = dist * 2.0;
   const h = w * (glassesImg.height / glassesImg.width);
 
-  // 🔥 CENTRALIZA NO NARIZ (AJUSTADO)
-  const cx = noseX;
-  const cy = noseY - dist * 0.15;
-
-  // 🔥 ROTAÇÃO ORIGINAL (CORRETA)
   const angle = Math.atan2(y2 - y1, x2 - x1);
 
   ctx.save();
 
-  ctx.translate(cx, cy);
+ctx.translate(cx, cy);
 
-  // 🔥 MANTÉM ORIENTAÇÃO CORRETA
-  ctx.rotate(angle + Math.PI);
+// mantém sua rotação normal (SEM mexer!)
+ctx.rotate(angle + Math.PI);
 
-  ctx.drawImage(glassesImg, -w/2, -h/2, w, h);
+// 🔥 PERSPECTIVA (3D lateral)
+ctx.scale(1 - Math.abs(perspective) * 0.3, 1);
+ctx.translate(perspective * 40, 0);
 
-  ctx.restore();
-});
+ctx.drawImage(glassesImg, -w/2, -h/2, w, h);
+
+ctx.restore();
 
 async function loop() {
   if (video.readyState >= 2) {
-    faceMesh.send({ image: video });
+    await faceMesh.send({ image: video }).catch(() => {});
   }
   requestAnimationFrame(loop);
 }
