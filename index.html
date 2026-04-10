@@ -96,18 +96,15 @@ faceMesh.onResults(results => {
 
   ctx.save();
 
-ctx.translate(cx, cy);
+  ctx.translate(cx, cy);
 
-// mantém sua rotação normal (SEM mexer!)
-ctx.rotate(angle + Math.PI);
+  // 🔥 AQUI É A CORREÇÃO DO ÓCULOS VIRADO
+  ctx.rotate(angle + Math.PI);
 
-// 🔥 PERSPECTIVA (3D lateral)
-ctx.scale(1 - Math.abs(perspective) * 0.3, 1);
-ctx.translate(perspective * 40, 0);
+  ctx.drawImage(glassesImg, -w/2, -h/2, w, h);
 
-ctx.drawImage(glassesImg, -w/2, -h/2, w, h);
-
-ctx.restore();
+  ctx.restore();
+});
 
 async function loop() {
   if (video.readyState >= 2) {
@@ -125,3 +122,4 @@ async function loop() {
 </script>
 </body>
 </html>
+
