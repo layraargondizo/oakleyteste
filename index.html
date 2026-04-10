@@ -94,16 +94,16 @@ faceMesh.onResults(results => {
 
   const angle = Math.atan2(y2 - y1, x2 - x1);
 
-  ctx.save();
+ctx.save();
 
-  ctx.translate(cx, cy);
+ctx.translate(cx, cy);
 
-  // 🔥 AQUI É A CORREÇÃO DO ÓCULOS VIRADO
-  ctx.rotate(angle + Math.PI);
+// 🔥 CORREÇÃO REAL DA INVERSÃO
+ctx.rotate(-angle);
 
-  ctx.drawImage(glassesImg, -w/2, -h/2, w, h);
+ctx.drawImage(glassesImg, -w/2, -h/2, w, h);
 
-  ctx.restore();
+ctx.restore();
 });
 
 async function loop() {
