@@ -2,10 +2,10 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Óculos Virtual 3D Simulado</title>
+<title>Óculos Virtual - Espelho com Nariz Travado</title>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <style>
-  body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+  body { margin: 0; overflow: hidden; background: #000; }
   video, canvas {
     position: absolute;
     left: 50%;
@@ -17,36 +17,45 @@
   }
   button {
     padding: 10px 15px; margin: 5px; border-radius: 8px; border: none; cursor: pointer;
-    background: white; font-weight: bold;
+    background: #333; color: white;
   }
 </style>
 </head>
 <body>
-
-<video id="video" autoplay playsinline style="display:none;"></video>
+<video id="video" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
 
 <div class="botoes">
-  <button onclick="trocarOculos('https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png')">Modelo 1</button>
-  </div>
+  <button onclick="trocarOculos(1)">Óculos 1</button>
+  <button onclick="trocarOculos(2)">Óculos 2</button>
+  <button onclick="trocarOculos(3)">Óculos 3</button>
+</div>
 
 <script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
+let currentGlasses = 1;
 const glassesImg = new Image();
 let oculosCarregado = false;
-glassesImg.src = "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png";
-glassesImg.onload = () => oculosCarregado = true;
 
-function trocarOculos(url) {
-    oculosCarregado = false;
-    glassesImg.src = url;
+function carregarOculos(num) {
+  currentGlasses = num;
+  // Troque as URLs pelas suas imagens de óculos (com fundo transparente)
+  const urls = {
+    1: "https://images.tcdn.com.br/img/editor/up/1360466/com_sombra.png",
+    2: "https://sua-url-oculos2.png",   // ← coloque aqui
+    3: "https://sua-url-oculos3.png"    // ← coloque aqui
+  };
+  glassesImg.src = urls[num] || urls[1];
+  glassesImg.onload = () => oculosCarregado = true;
 }
 
+carregarOculos(1);
+
 async function iniciarCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
   video.srcObject = stream;
   return new Promise(resolve => video.onloadedmetadata = resolve);
 }
@@ -63,94 +72,80 @@ faceMesh.setOptions({
 });
 
 faceMesh.onResults(results => {
-  if (!results.multiFaceLandmarks.length) {
-      // Se não detectar rosto, apenas desenha o vídeo
-      ctx.save();
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-      ctx.restore();
-      return;
-  };
+  if (!canvas.width || !canvas.height) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // 1. DESENHA O VÍDEO ESPELHADO
+  // Espelha o vídeo (efeito espelho)
   ctx.save();
   ctx.scale(-1, 1);
   ctx.drawImage(results.image, -canvas.width, 0, canvas.width, canvas.height);
   ctx.restore();
 
-  if (!oculosCarregado) return;
+  if (!oculosCarregado || !results.multiFaceLandmarks.length) return;
 
   const lm = results.multiFaceLandmarks[0];
 
-  // PONTOS CHAVE (Usando índices do FaceMesh)
-  const olhoEsq = lm[33];   // Canto externo olho esquerdo
-  const olhoDir = lm[263];  // Canto externo olho direito
-  const nariz = lm[1];      // Ponta do nariz (Centro)
-  const ponteNariz = lm[168]; // Entre os olhos (onde o óculos apoia)
+  // === PONTOS IMPORTANTES ===
+  const leftEye     = lm[33];   // canto externo olho esquerdo
+  const rightEye    = lm[263];  // canto externo olho direito
+  const noseBridge  = lm[168];  // ponte do nariz (topo)
+  const noseTip     = lm[1];    // ponta do nariz (mais baixo)
 
-  // Coordenadas convertidas para o Canvas (invertendo o X por causa do espelhamento)
-  const xE = (1 - olhoEsq.x) * canvas.width;
-  const xD = (1 - olhoDir.x) * canvas.width;
-  const yE = olhoEsq.y * canvas.height;
-  const yD = olhoDir.y * canvas.height;
-  
-  const xN = (1 - ponteNariz.x) * canvas.width;
-  const yN = ponteNariz.y * canvas.height;
+  // Coordenadas na tela (já espelhadas)
+  const ex1 = (1 - leftEye.x) * canvas.width;
+  const ey1 = leftEye.y * canvas.height;
+  const ex2 = (1 - rightEye.x) * canvas.width;
+  const ey2 = rightEye.y * canvas.height;
 
-  // 2. CÁLCULOS DE DIMENSÃO E ÂNGULO
-  const larguraOculos = Math.hypot(xD - xE, yD - yE) * 2.2; 
-  const alturaOculos = larguraOculos * (glassesImg.height / glassesImg.width);
-  const inclinacao = Math.atan2(yD - yE, xD - xE);
+  const nx1 = (1 - noseBridge.x) * canvas.width;   // ponte
+  const ny1 = noseBridge.y * canvas.height;
+  const nx2 = (1 - noseTip.x) * canvas.width;      // ponta
+  const ny2 = noseTip.y * canvas.height;
 
-  // 3. SIMULAÇÃO 3D (YAW - Rotação lateral)
-  // Calculamos a diferença de proporção entre o nariz e os olhos
-  const distEsq = Math.abs(xN - xE);
-  const distDir = Math.abs(xD - xN);
-  
-  // O fator de escala reduz a largura da imagem conforme o rosto vira
-  // Se distEsq e distDir forem muito diferentes, o rosto está de lado
-  const faceRoll = distEsq / distDir;
-  let scaleX = 1;
-  
-  // Limita a distorção para não ficar bizarro
-  if (faceRoll > 1) scaleX = 1 / (faceRoll * 0.8);
-  else scaleX = faceRoll * 1.2;
-  scaleX = Math.min(Math.max(scaleX, 0.5), 1); // Clamp entre 0.5 e 1
+  // Centro aproximado entre os olhos + um pouco para baixo (nariz)
+  const centerX = (ex1 + ex2) / 2;
+  const centerY = (ey1 + ey2) / 2 + (ny1 - (ey1 + ey2)/2) * 0.4; // leve ajuste para baixo
 
-  // 4. DESENHO
+  // Largura baseada na distância entre os olhos
+  const eyeDistance = Math.hypot(ex2 - ex1, ey2 - ey1);
+  let width = eyeDistance * 2.15;   // ajuste esse valor conforme seu modelo de óculos
+
+  // Altura proporcional à imagem
+  let height = width * (glassesImg.height / glassesImg.width);
+
+  // Ângulo de rotação baseado na linha dos olhos
+  const angle = Math.atan2(ey2 - ey1, ex2 - ex1);
+
   ctx.save();
-  
-  // Move para a ponte do nariz
-  ctx.translate(xN, yN);
-  
-  // Aplica a rotação (inclinação da cabeça)
-  ctx.rotate(inclinacao + Math.PI);
-  
-  // Aplica a escala horizontal para o efeito 3D
-  ctx.scale(scaleX, 1);
+  ctx.translate(centerX, centerY);
+  ctx.rotate(angle);
 
-  // Desenha centralizado no ponto do nariz
-  // O ajuste no "y" (-alturaOculos * 0.35) é para subir o óculos do nariz para os olhos
-  ctx.drawImage(glassesImg, -larguraOculos/2, -alturaOculos * 0.45, larguraOculos, alturaOculos);
+  // Desenha o óculos centralizado
+  ctx.drawImage(glassesImg, -width/2, -height/2.1, width, height); 
+  // O -height/2.1 ajuda a subir um pouco o óculos no nariz
 
   ctx.restore();
 });
 
 async function loop() {
   if (video.readyState >= 2) {
-    await faceMesh.send({ image: video });
+    await faceMesh.send({ image: video }).catch(() => {});
   }
   requestAnimationFrame(loop);
 }
 
 (async () => {
   await iniciarCamera();
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
   loop();
 })();
+
+// Função dos botões
+window.trocarOculos = function(num) {
+  carregarOculos(num);
+};
 </script>
 </body>
 </html>
