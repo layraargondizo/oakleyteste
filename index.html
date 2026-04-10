@@ -98,8 +98,8 @@ ctx.save();
 
 ctx.translate(cx, cy);
 
-// 🔥 CORREÇÃO REAL DA INVERSÃO
-ctx.rotate(-angle);
+// 🔥 CORREÇÃO DO LADO (SEM VIRAR DE PONTA CABEÇA)
+ctx.rotate(-angle + Math.PI);
 
 ctx.drawImage(glassesImg, -w/2, -h/2, w, h);
 
